@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 import subprocess, json, os
 from optparse import OptionParser
+import re
 
 usage = "usage: %prog [options] [server_number]\n\
   server_number: a numeric value corresponding to the server number\n\
   e.g.: '%prog 1' will ssh into the 1st server in the list."
 
 parser = OptionParser(usage)
-parser.add_option("-x", "--bust-cache", action="store_true",
-    help="refetch servers list from AWS")
+parser.add_option("-x", "--bust-cache", action="store_true", default=True,
+    help="refetch servers list from AWS (default: true)")
 parser.add_option("-u", "--user", action="store",
           dest="user", default="ubuntu",
     help="provide user (default: ubuntu)")
@@ -21,9 +22,12 @@ parser.add_option("-p", "--profile", action="store",
 parser.add_option("-r", "--region", action="store",
           dest="region", default="",
     help="provide AWS region")
-parser.add_option("--ip", action="store",
-          dest="ip", default=0,
+parser.add_option("--ip", action="store", type=int,
+          dest="ip", default=1,
     help="connect using IP instead of DNS")
+parser.add_option("--id", action="store",
+          dest="id", 
+    help="connect to specific instance id")
 parser.add_option("-g", "--grep", action="store",
           dest="grep", default="",
     help="filter the server list")
@@ -40,13 +44,13 @@ else:
   cache_file_list = os.path.join(cache_dir, 'ssh2_list')
   cache_file_num = os.path.join(cache_dir, 'ssh2_num')
 
-num = ''
+
+num = 1 if options.id else "" 
 if args:
   if not args[0].isdigit():
     print "'server_number' must be a numeric value"
     exit()
   num = int(args[0])
-
 
 def extract_name(instance):
   if 'Tags' in instance:
@@ -62,6 +66,9 @@ if options.bust_cache or not os.path.exists(cache_file_list) \
   if os.path.exists(cache_file_num):
     os.remove(cache_file_num)
   aws_cmd = 'aws ec2 describe-instances --output json'
+  aws_cmd += ' --query "Reservations[*].Instances[].{InstanceId:InstanceId,PrivateIpAddress:PrivateIpAddress,PrivateIpAddress:PrivateIpAddress,PublicDnsName:PublicDnsName,Tags:Tags}"'
+  if options.id:
+    aws_cmd += ' --instance-ids ' + options.id
   if options.profile:
     aws_cmd += ' --profile ' + options.profile
   if options.region:
@@ -79,27 +86,24 @@ if options.bust_cache or not os.path.exists(cache_file_list) \
     f.write(output)
 
 output = open(cache_file_list).read()
-parsed = json.loads(output)
-
-all_instances = []
-if not parsed['Reservations']:
+all_instances = json.loads(output)
+if len(all_instances)==0:
   print 'Coult not find any servers.'
   if os.path.exists(cache_file_list):
     os.remove(cache_file_list)
   exit()
-for instances in parsed['Reservations']:
-  for instance in instances['Instances']:
-    all_instances.append(instance)
 
 if options.grep:
-  all_instances = [inst for inst in all_instances if options.grep in extract_name(inst)]
+  pattern = re.compile("^{}".format(options.grep))
+  all_instances = [inst for inst in all_instances if pattern.match(extract_name(inst).lower())]
 
 if not num:
   print "\nServers list:\n"
   for i, instance in enumerate(all_instances, 1):
     choice = '[%d]' % i
     name = extract_name(instance)
-    print '%-4s %-35s %-55s' % (choice, name + (35 - len(name)) * '.', instance['PublicDnsName'])
+    print '%-4s %-35s %-55s' % (choice, name + (35 - len(name)) * '.', instance['InstanceId'])
+
 
 default_num = 1
 if os.path.exists(cache_file_num):
