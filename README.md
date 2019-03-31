@@ -58,10 +58,11 @@ or
 
 without using Python package manager:
 ```
-git clone https://github.com/soheil/ssh2.git
+git clone https://github.com/moryachok/ssh2.git
 cd ssh2
 ln -sf $(pwd)/ssh2 /usr/local/bin/
 ```
 
 ## Author
 Soheil Yasrebi, [@soheil](https://twitter.com/soheil)
+Michael Greenshtein
